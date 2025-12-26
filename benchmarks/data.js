@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1766757872504,
+  "lastUpdate": 1766758312294,
   "repoUrl": "https://github.com/signo/n8n-mcp",
   "entries": {
     "n8n-mcp Benchmarks": [
@@ -85,6 +85,37 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/signo/n8n-mcp/commit/3a4b67e7c2ef4f8fcddd5edc02b0f36410c3449b"
         },
         "date": 1766757872227,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sample - array sorting - small",
+            "value": 0.0136,
+            "range": "0.3096",
+            "unit": "ms",
+            "extra": "73341 ops/sec"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "signodev@signocreativo.com",
+            "name": "Signo Creativo",
+            "username": "signo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e43a4733a950f39b8e84a4730e5a13e3cde168da",
+          "message": "Change volume configuration for n8n-mcp service\n\nUpdated volume configuration to use a local directory for data persistence instead of a named volume.",
+          "timestamp": "2025-12-26T15:09:58+01:00",
+          "tree_id": "1adcb97a166558a3981de6b535c31ca0f983ef75",
+          "url": "https://github.com/signo/n8n-mcp/commit/e43a4733a950f39b8e84a4730e5a13e3cde168da"
+        },
+        "date": 1766758311944,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
