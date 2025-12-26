@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1766759089635,
+  "lastUpdate": 1766760500914,
   "repoUrl": "https://github.com/signo/n8n-mcp",
   "entries": {
     "n8n-mcp Benchmarks": [
@@ -147,6 +147,37 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/signo/n8n-mcp/commit/e56135ccd13bfc4e0b11cfb99204bd5221824ea1"
         },
         "date": 1766759089013,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sample - array sorting - small",
+            "value": 0.0136,
+            "range": "0.3096",
+            "unit": "ms",
+            "extra": "73341 ops/sec"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "signodev@signocreativo.com",
+            "name": "Signo Creativo",
+            "username": "signo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5ff4984205199d21749c5f03157543eae90b6d0a",
+          "message": "Disable Traefik API key authentication middleware\n\nComment out Traefik middleware label for API key auth.",
+          "timestamp": "2025-12-26T15:46:29+01:00",
+          "tree_id": "abc9318d4427929229980b6f951bbb68b665f835",
+          "url": "https://github.com/signo/n8n-mcp/commit/5ff4984205199d21749c5f03157543eae90b6d0a"
+        },
+        "date": 1766760500267,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
