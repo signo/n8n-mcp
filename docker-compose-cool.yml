@@ -35,7 +35,7 @@ services:
     # Volumes for persistence
     volumes:
       # local dir talia server
-      - /home/admin/n8n/data:/app/data
+      - /home/admin/n8n/mcp/data:/app/data
     
     # Port mapping
     ports:
