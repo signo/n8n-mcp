@@ -90,7 +90,6 @@ Full support for all 8 AI connection types used in n8n AI workflows:
 
 **Important Notes**:
 - **AI nodes do NOT require main connections**: Nodes like OpenAI Chat Model, Postgres Chat Memory, Embeddings OpenAI, and Supabase Vector Store use AI-specific connection types exclusively. They should ONLY have connections like \`ai_languageModel\`, \`ai_memory\`, \`ai_embedding\`, or \`ai_tool\` - NOT \`main\` connections.
-- **Fixed in v2.21.1**: Validation now correctly recognizes AI nodes that only have AI-specific connections without requiring \`main\` connections (resolves issue #357).
 
 **Best Practices**:
 - Always specify \`sourceOutput\` for AI connections (defaults to "main" if omitted)
@@ -313,7 +312,7 @@ n8n_update_partial_workflow({
       continueOnError: { type: 'boolean', description: 'If true, apply valid operations even if some fail (best-effort mode). Returns applied and failed operation indices. Default: false (atomic)' },
       intent: { type: 'string', description: 'Intent of the change - helps to return better response. Include in every tool call. Example: "Add error handling for API failures".' }
     },
-    returns: 'Updated workflow object or validation results if validateOnly=true',
+    returns: 'Minimal summary (id, name, active, nodeCount, operationsApplied) for token efficiency. Use n8n_get_workflow with mode "structure" to verify current state if needed. Returns validation results if validateOnly=true.',
     examples: [
       '// Include intent parameter for better responses\nn8n_update_partial_workflow({id: "abc", intent: "Add error handling for API failures", operations: [{type: "addConnection", source: "HTTP Request", target: "Error Handler"}]})',
       '// Add a basic node (minimal configuration)\nn8n_update_partial_workflow({id: "abc", operations: [{type: "addNode", node: {name: "Process Data", type: "n8n-nodes-base.set", position: [400, 300], parameters: {}}}]})',

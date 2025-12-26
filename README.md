@@ -5,7 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/n8n-mcp.svg)](https://www.npmjs.com/package/n8n-mcp)
 [![codecov](https://codecov.io/gh/czlonkowski/n8n-mcp/graph/badge.svg?token=YOUR_TOKEN)](https://codecov.io/gh/czlonkowski/n8n-mcp)
 [![Tests](https://img.shields.io/badge/tests-3336%20passing-brightgreen.svg)](https://github.com/czlonkowski/n8n-mcp/actions)
-[![n8n version](https://img.shields.io/badge/n8n-1.121.2-orange.svg)](https://github.com/n8n-io/n8n)
+[![n8n version](https://img.shields.io/badge/n8n-2.1.4-orange.svg)](https://github.com/n8n-io/n8n)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io%2Fczlonkowski%2Fn8n--mcp-green.svg)](https://github.com/czlonkowski/n8n-mcp/pkgs/container/n8n-mcp)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/n8n-mcp?referralCode=n8n-mcp)
 
@@ -36,10 +36,6 @@ AI results can be unpredictable. Protect your work!
 
 ## 🚀 Quick Start
 
-Get n8n-MCP running in minutes:
-
-[![n8n-mcp Video Quickstart Guide](./thumbnail.png)](https://youtu.be/5CccjiLLyaY?si=Z62SBGlw9G34IQnQ&t=343)
-
 ### Option 1: Hosted Service (Easiest - No Setup!) ☁️
 
 **The fastest way to try n8n-MCP** - no installation, no configuration:
@@ -51,21 +47,7 @@ Get n8n-MCP running in minutes:
 - ✅ **Always up-to-date**: Latest n8n nodes and templates
 - ✅ **No infrastructure**: We handle everything
 
-Just sign up, get your API key, and add to Claude Desktop:
-
-```json
-{
-  "mcpServers": {
-    "n8n-mcp": {
-      "command": "npx",
-      "args": ["-y", "@anthropic-ai/mcp-remote@latest", "https://mcp.n8n-mcp.com/sse"],
-      "env": {
-        "API_KEY": "your-api-key-from-dashboard"
-      }
-    }
-  }
-}
-```
+Just sign up, get your API key, and connect your MCP client. 
 
 ---
 
@@ -74,6 +56,10 @@ Just sign up, get your API key, and add to Claude Desktop:
 Prefer to run n8n-MCP yourself? Choose your deployment method:
 
 ### Option A: npx (Quick Local Setup) 🚀
+
+Get n8n-MCP running in minutes:
+
+[![n8n-mcp Video Quickstart Guide](./thumbnail.png)](https://youtu.be/5CccjiLLyaY?si=Z62SBGlw9G34IQnQ&t=343)
 
 **Prerequisites:** [Node.js](https://nodejs.org/) installed on your system
 
@@ -515,6 +501,9 @@ Complete guide for integrating n8n-MCP with Windsurf using project rules.
 ### [Codex](./docs/CODEX_SETUP.md)
 Complete guide for integrating n8n-MCP with Codex.
 
+### [Antigravity](./docs/ANTIGRAVITY_SETUP.md)
+Complete guide for integrating n8n-MCP with Antigravity.
+
 ## 🎓 Add Claude Skills (Optional)
 
 Supercharge your n8n workflow building with specialized skills that teach AI how to build production-ready workflows!
@@ -609,7 +598,7 @@ ALWAYS explicitly configure ALL parameters that control node behavior.
    - `n8n_create_workflow(workflow)` - Deploy
    - `n8n_validate_workflow({id})` - Post-deployment check
    - `n8n_update_partial_workflow({id, operations: [...]})` - Batch updates
-   - `n8n_trigger_webhook_workflow()` - Test webhooks
+   - `n8n_test_workflow({workflowId})` - Test workflow execution
 
 ## Critical Warnings
 
@@ -968,7 +957,7 @@ Once connected, Claude can use these powerful tools:
   - `searchMode: 'by_metadata'` - Filter by `complexity`, `requiredService`, `targetAudience`
 - **`get_template`** - Get complete workflow JSON (modes: nodes_only, structure, full)
 
-### n8n Management Tools (12 tools - Requires API Configuration)
+### n8n Management Tools (13 tools - Requires API Configuration)
 These tools require `N8N_API_URL` and `N8N_API_KEY` in your configuration.
 
 #### Workflow Management
@@ -985,9 +974,13 @@ These tools require `N8N_API_URL` and `N8N_API_KEY` in your configuration.
 - **`n8n_validate_workflow`** - Validate workflows in n8n by ID
 - **`n8n_autofix_workflow`** - Automatically fix common workflow errors
 - **`n8n_workflow_versions`** - Manage version history and rollback
+- **`n8n_deploy_template`** - Deploy templates from n8n.io directly to your instance with auto-fix
 
 #### Execution Management
-- **`n8n_trigger_webhook_workflow`** - Trigger workflows via webhook URL
+- **`n8n_test_workflow`** - Test/trigger workflow execution:
+  - Auto-detects trigger type (webhook, form, chat) from workflow
+  - Supports custom data, headers, and HTTP methods for webhooks
+  - Chat triggers support message and sessionId for conversations
 - **`n8n_executions`** - Unified execution management (v2.26.0):
   - `action: 'list'` - List executions with status filtering
   - `action: 'get'` - Get execution details by ID

@@ -7,6 +7,807 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.31.2] - 2025-12-24
+
+### Changed
+
+- Updated n8n from 2.0.2 to 2.1.4
+- Updated n8n-core from 2.0.1 to 2.1.3
+- Updated n8n-workflow from 2.0.1 to 2.1.1
+- Updated @n8n/n8n-nodes-langchain from 2.0.1 to 2.1.3
+- Rebuilt node database with 540 nodes (434 from n8n-nodes-base, 106 from @n8n/n8n-nodes-langchain)
+- Refreshed template database with 2,737 workflow templates from n8n.io
+
+## [2.31.1] - 2025-12-23
+
+### Fixed
+
+**mcpTrigger Nodes No Longer Incorrectly Flagged as "Disconnected" (Issue #503)**
+
+Fixed a validation bug where `mcpTrigger` nodes were incorrectly flagged as "disconnected nodes" when using `n8n_update_partial_workflow` or `n8n_update_full_workflow`. This blocked ALL updates to MCP server workflows.
+
+**Root Cause:**
+The `validateWorkflowStructure()` function only checked `main` connections when building the connected nodes set, ignoring AI connection types (`ai_tool`, `ai_languageModel`, `ai_memory`, `ai_embedding`, `ai_vectorStore`). Additionally, trigger nodes were only checked for outgoing connections, but `mcpTrigger` only receives inbound `ai_tool` connections.
+
+**Changes:**
+- Extended connection validation to check all 7 connection types (main, error, ai_tool, ai_languageModel, ai_memory, ai_embedding, ai_vectorStore)
+- Updated trigger node validation to accept either outgoing OR inbound connections
+- Added 7 new tests covering all AI connection types
+
+**Impact:**
+- MCP server workflows can now be updated, renamed, and deactivated normally
+- All `n8n_update_*` operations work correctly for AI workflows
+- No breaking changes for existing workflows
+
+## [2.31.0] - 2025-12-23
+
+### Added
+
+**New `error` Mode for Execution Debugging**
+
+Added a new `mode='error'` option to `n8n_executions` action=get that's optimized for AI agents debugging workflow failures. This mode provides intelligent error extraction with 80-99% token savings compared to `mode='full'`.
+
+**Key Features:**
+
+- **Error Analysis**: Extracts error message, type, node name, and relevant parameters
+- **Upstream Context**: Samples input data from the node feeding into the error node (configurable limit)
+- **Execution Path**: Shows the node execution sequence from trigger to error
+- **AI Suggestions**: Pattern-based fix suggestions for common errors (missing fields, auth issues, rate limits, etc.)
+- **Workflow Fetch**: Optionally fetches workflow structure for accurate upstream detection
+
+**New Parameters for `mode='error'`:**
+
+- `errorItemsLimit` (default: 2) - Number of sample items from upstream node
+- `includeStackTrace` (default: false) - Include full vs truncated stack trace
+- `includeExecutionPath` (default: true) - Include node execution path
+- `fetchWorkflow` (default: true) - Fetch workflow for accurate upstream detection
+
+**Token Efficiency:**
+
+| Execution Size | Full Mode | Error Mode | Savings |
+|----------------|-----------|------------|---------|
+| 11 items | ~11KB | ~3KB | 73% |
+| 1001 items | ~354KB | ~3KB | 99% |
+
+**AI Suggestion Patterns Detected:**
+
+- Missing required fields
+- Authentication/authorization issues
+- Rate limiting
+- Network/connection errors
+- Invalid JSON format
+- Missing data fields
+- Type mismatches
+- Timeouts
+- Permission denied
+
+**Usage Examples:**
+
+```javascript
+// Basic error debugging
+n8n_executions({action: "get", id: "exec_123", mode: "error"})
+
+// With more sample data
+n8n_executions({action: "get", id: "exec_123", mode: "error", errorItemsLimit: 5})
+
+// With full stack trace
+n8n_executions({action: "get", id: "exec_123", mode: "error", includeStackTrace: true})
+```
+
+## [2.30.2] - 2025-12-21
+
+### Fixed
+
+**Restored Template Database**
+
+Fixed missing templates in the database by restoring 2,768 workflow templates from git history while preserving compatibility with latest n8n 2.0.2 node definitions.
+
+**Key Changes:**
+- Restored templates table with 2,768 curated workflow templates
+- Updated nodes table schema to include `is_tool_variant`, `has_tool_variant`, and `tool_variant_of` columns
+- Database now contains 803 nodes (updated for n8n 2.0.2) and 2,768 templates
+
+## [2.30.1] - 2025-12-17
+
+### Added
+
+**Support for `_cnd` Conditional Operators in displayOptions Validation**
+
+Added comprehensive support for n8n's `_cnd` conditional operators in displayOptions, enabling proper validation of versioned nodes like Execute Workflow Trigger.
+
+**Supported Operators (12 total):**
+
+- `eq` - Equal
+- `not` - Not equal
+- `gte` - Greater than or equal
+- `lte` - Less than or equal
+- `gt` - Greater than
+- `lt` - Less than
+- `between` - Range check (from/to)
+- `startsWith` - String prefix match
+- `endsWith` - String suffix match
+- `includes` - String contains
+- `regex` - Regular expression match
+- `exists` - Field existence check
+
+**Key Features:**
+
+- **Version-Based Visibility**: Properties with `displayOptions: { show: { '@version': [{ _cnd: { gte: 1.1 } }] } }` are now correctly evaluated
+- **No More False Positives**: Eliminates incorrect "not visible with current settings" warnings for versioned nodes
+- **Full Operator Support**: All 12 n8n conditional operators implemented
+- **Backward Compatible**: Plain value matching continues to work unchanged
+- **Hardened Operators**: Regex and between operators include validation for edge cases
+
+**Files Changed:**
+
+- `src/services/config-validator.ts` - Added `evaluateCondition()`, `valueMatches()`, updated `isPropertyVisible()` to public
+- `src/mcp/server.ts` - Pass `@version` to validators in `validateNodeConfig()` and `validateNodeMinimal()`
+- `src/services/workflow-validator.ts` - Pass `@version` in workflow validation
+- `tests/unit/services/config-validator-cnd.test.ts` - **NEW** 47 unit tests for all operators including edge cases
+
+### Fixed
+
+**n8n 2.0+ Execute Workflow Trigger Activation**
+
+Fixed a breaking change introduced in n8n 2.0 where Execute Workflow Trigger workflows must now be activated to work.
+
+**What Changed:**
+
+- `executeWorkflowTrigger` is now recognized as an activatable trigger
+- Removed outdated validation that blocked active workflows with only Execute Workflow Trigger
+- Updated error messages to include executeWorkflowTrigger in the list of valid triggers
+
+**Files Changed:**
+
+- `src/utils/node-type-utils.ts` - Updated `isActivatableTrigger()` to return `true` for executeWorkflowTrigger
+- `src/services/n8n-validation.ts` - Removed specific check blocking Execute Workflow Trigger
+- `src/services/workflow-diff-engine.ts` - Updated error message
+- `tests/unit/utils/node-type-utils.test.ts` - Updated tests for n8n 2.0+ behavior
+
+**Conceived by Romuald Czlonkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.30.0] - 2025-12-15
+
+### Changed
+
+**Major n8n 2.0 Update**
+
+Updated to n8n 2.0, a major version upgrade with significant improvements.
+
+**Dependency Updates:**
+
+- n8n: 1.123.4 → 2.0.2
+- n8n-core: 1.122.1 → 2.0.1
+- n8n-workflow: 1.120.0 → 2.0.1
+- @n8n/n8n-nodes-langchain: 1.122.1 → 2.0.1
+
+**Database:**
+
+- Rebuilt node database with 541 nodes (435 from n8n-nodes-base, 106 from @n8n/n8n-nodes-langchain)
+- Updated README badge with new n8n version
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.29.2] - 2025-12-12
+
+### Added
+
+**Tool Variant Validation and Auto-Fix**
+
+Added validation to detect when base nodes are incorrectly used as AI tools when Tool variants should be used instead, with automatic fix capability.
+
+**Key Features:**
+
+- **New Validation**: `validateAIToolSource()` detects base nodes (e.g., `n8n-nodes-base.supabase`) connected via `ai_tool` output when a Tool variant exists
+- **Clear Error Messages**: Returns actionable error with `WRONG_NODE_TYPE_FOR_AI_TOOL` code explaining which Tool variant to use
+- **Auto-Fix Support**: New `tool-variant-correction` fix type in `n8n_autofix_workflow` automatically replaces base nodes with their Tool variants
+- **High Confidence Fixes**: Tool variant corrections are marked as high confidence since the correct type is known
+
+**New Utility Method:**
+
+- `NodeTypeNormalizer.toWorkflowFormat()` - Converts database format (short) back to n8n API format (full)
+
+**Test Coverage:**
+
+- 83 new unit tests covering Tool variant validation, auto-fix, and type normalization
+- Tests for edge cases: langchain tools, unknown nodes, multiple errors, community nodes
+
+**Files Changed:**
+
+- `src/services/workflow-validator.ts` - Added `validateAIToolSource()` method
+- `src/services/workflow-auto-fixer.ts` - Added `tool-variant-correction` fix type
+- `src/utils/node-type-normalizer.ts` - Added `toWorkflowFormat()` method
+- `tests/unit/services/workflow-validator-tool-variants.test.ts` - **NEW** 12 tests
+- `tests/unit/services/workflow-auto-fixer-tool-variants.test.ts` - **NEW** 13 tests
+- `tests/unit/utils/node-type-normalizer.test.ts` - Added 19 tests for `toWorkflowFormat()`
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.29.1] - 2025-12-12
+
+### Added
+
+**Tool Variant Support for AI Agent Integration**
+
+Added comprehensive support for n8n Tool variants - specialized node versions created for AI Agent tool connections (e.g., `nodes-base.supabaseTool` from `nodes-base.supabase`).
+
+**Key Features:**
+
+- **266 Tool Variants Generated**: During database rebuild, Tool variants are automatically created for all nodes with `usableAsTool: true`
+- **Bidirectional Cross-References**:
+  - Base nodes show `toolVariantInfo.hasToolVariant: true` with guidance to use Tool variant
+  - Tool variants show `toolVariantInfo.isToolVariant: true` with reference to base node
+- **Clear AI Guidance**: Contextual messages help AI assistants choose the correct node type:
+  - Base node guidance: "To use this node with AI Agents, use the Tool variant: nodes-base.supabaseTool"
+  - Tool variant guidance: "This is the Tool variant for AI Agent integration"
+- **Tool Description Property**: Tool variants include `toolDescription` property for AI context
+- **ai_tool Output Type**: Tool variants output `ai_tool` instead of `main` for proper Agent connections
+
+**Database Schema Changes:**
+
+- Added `is_tool_variant` column (1 if Tool variant)
+- Added `tool_variant_of` column (base node type reference)
+- Added `has_tool_variant` column (1 if base node has Tool variant)
+- Added indexes for efficient Tool variant queries
+
+**Files Changed:**
+
+- `src/database/schema.sql` - New columns and indexes
+- `src/parsers/node-parser.ts` - Extended ParsedNode interface
+- `src/services/tool-variant-generator.ts` - **NEW** Tool variant generation service
+- `src/database/node-repository.ts` - Store/retrieve Tool variant fields
+- `src/scripts/rebuild.ts` - Generate Tool variants during rebuild
+- `src/mcp/server.ts` - Add `toolVariantInfo` to get_node responses
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.29.0] - 2025-12-09
+
+### Performance
+
+**Token-Efficient Workflow Tool Responses (#479)**
+
+Optimized 4 workflow management tools to return minimal responses instead of full workflow objects, reducing token usage by 75-90%:
+
+- **n8n_update_partial_workflow**: Returns `{id, name, active, nodeCount, operationsApplied}` instead of full workflow
+- **n8n_create_workflow**: Returns `{id, name, active, nodeCount}` instead of full workflow
+- **n8n_update_full_workflow**: Returns `{id, name, active, nodeCount}` instead of full workflow
+- **n8n_delete_workflow**: Returns `{id, name, deleted: true}` instead of full deleted workflow
+
+**Impact**:
+- ~75-90% reduction in response token usage per operation
+- Messages now guide AI agents to use `n8n_get_workflow` with mode 'structure' if verification needed
+- No functional changes - full workflow data still available via `n8n_get_workflow`
+
+**Files Modified**:
+- `src/mcp/handlers-workflow-diff.ts` - Optimized partial update response
+- `src/mcp/handlers-n8n-manager.ts` - Optimized create, full update, and delete responses
+- `src/mcp/tool-docs/workflow_management/*.ts` - Updated documentation
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.28.9] - 2025-12-08
+
+### Dependencies
+
+**Updated n8n to 1.123.4**
+
+- Updated n8n from 1.122.4 to 1.123.4
+- Updated n8n-core from 1.121.1 to 1.122.1
+- Updated n8n-workflow from 1.119.1 to 1.120.0
+- Updated @n8n/n8n-nodes-langchain from 1.121.1 to 1.122.1
+- Rebuilt node database with 545 nodes (439 from n8n-nodes-base, 106 from @n8n/n8n-nodes-langchain)
+- Updated README badge with new n8n version
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.28.8] - 2025-12-07
+
+### Bug Fixes
+
+**Multi-tenant: handleValidateWorkflow missing context parameter (#474)**
+
+Fixed `n8n_validate_workflow` tool failing in multi-tenant mode with error:
+`"n8n API not configured. Please set N8N_API_URL and N8N_API_KEY environment variables."`
+
+- **Root Cause**: `handleValidateWorkflow` called `handleGetWorkflow` without passing the `context` parameter
+- **Impact**: Multi-tenant deployments could not use the `n8n_validate_workflow` tool
+- **Solution**: Pass `context` parameter to `handleGetWorkflow` call (line 987)
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.28.7] - 2025-12-05
+
+### Bug Fixes
+
+**Memory Leak: MCP Server Cleanup on Session Removal (#471)**
+
+Fixed memory leak where `N8NDocumentationMCPServer` objects were not properly closed when sessions were removed, causing memory growth over time.
+
+- **Root Cause**: `removeSession()` deleted server from map but didn't call cleanup methods
+- **Evidence**: Production server memory grew from ~10% to ~35% in 43 minutes (~1GB growth with 4GB container)
+
+- **Solution**:
+  - Added `close()` method to `N8NDocumentationMCPServer` that:
+    - Calls `server.close()` (MCP SDK cleanup)
+    - Calls `cache.destroy()` to stop cleanup timer and clear entries
+    - Closes database connection properly
+    - Nullifies service references to help GC
+  - Updated `removeSession()` to call `server.close()` before releasing references
+
+- **Files Changed**:
+  - `src/mcp/server.ts` - Added `close()` method
+  - `src/http-server-single-session.ts` - Call `server.close()` in `removeSession()`
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.28.6] - 2025-12-05
+
+### Bug Fixes
+
+**Test Updates for v2.28.5 Behavior Changes**
+
+Fixed test expectations to match v2.28.5 implementation changes:
+
+- **n8n-version tests**: Updated to verify 'v' prefix support in version strings (e.g., `v1.2.3`)
+- **n8n-validation tests**: Updated expectations for empty settings handling - now returns minimal defaults `{ executionOrder: 'v1' }` instead of `{}` to avoid n8n API rejection (Issue #431)
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.28.5] - 2025-12-05
+
+### Bug Fixes
+
+**Version-Aware Settings Filtering for n8n API Compatibility (#464, #465, #466)**
+
+Fixed `"Invalid request: request/body must NOT have additional properties"` errors when using `n8n_update_partial_workflow` with older n8n instances.
+
+- **Root Cause**: n8n Public API uses strict JSON schema validation. Different n8n versions support different workflow settings properties:
+  - All versions: 7 core properties (saveExecutionProgress, saveManualExecutions, saveDataErrorExecution, saveDataSuccessExecution, executionTimeout, errorWorkflow, timezone)
+  - n8n 1.37.0+: adds `executionOrder`
+  - n8n 1.119.0+: adds `callerPolicy`, `callerIds`, `timeSavedPerExecution`, `availableInMCP`
+
+- **Solution**: Auto-detect n8n version via `/rest/settings` endpoint and filter settings accordingly
+
+- **New Features**:
+  - Version detection with 5-minute cache TTL (handles server upgrades without restart)
+  - Type validation for version string responses
+  - Support for `v` prefix in version strings (e.g., `v1.2.3`)
+  - Race condition protection with promise-based locking
+  - Read-only field filtering (`activeVersionId`, `activeVersion`)
+
+- **Files Changed**:
+  - `src/services/n8n-version.ts` (NEW) - Version detection and settings filtering
+  - `src/services/n8n-api-client.ts` - Added `getVersion()` method with locking
+  - `src/services/n8n-validation.ts` - Added read-only field filtering
+  - `src/types/n8n-api.ts` - Added version types
+  - `tests/unit/services/n8n-version.test.ts` (NEW) - 24 unit tests
+
+Thanks to [@thesved](https://github.com/thesved) for this contribution!
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.28.4] - 2025-12-05
+
+### Features
+
+**Configurable MAX_SESSIONS Limit (#468)**
+
+The `MAX_SESSIONS` limit is now configurable via the `N8N_MCP_MAX_SESSIONS` environment variable, addressing scalability issues for multi-tenant SaaS deployments.
+
+- **Problem**: Hardcoded limit of 100 concurrent sessions caused "Session limit reached" errors during peak usage
+- **Solution**: `MAX_SESSIONS` now reads from `N8N_MCP_MAX_SESSIONS` env var (default: 100)
+- **Usage**: Set `N8N_MCP_MAX_SESSIONS=1000` for higher capacity deployments
+- **Safety**: Includes `Math.max(1, ...)` floor to prevent invalid configurations
+- **Files**: `src/http-server-single-session.ts:44`
+
+```bash
+# Example: Allow up to 1000 concurrent sessions
+N8N_MCP_MAX_SESSIONS=1000
+```
+
+## [2.28.3] - 2025-12-02
+
+### Changed
+
+**Dependencies**
+- Updated n8n from 1.121.2 to 1.122.4
+- Updated n8n-core from 1.120.1 to 1.121.1
+- Updated n8n-workflow from 1.118.1 to 1.119.1
+- Updated @n8n/n8n-nodes-langchain from 1.120.1 to 1.121.1
+- Rebuilt node database with 544 nodes (438 from n8n-nodes-base, 106 from @n8n/n8n-nodes-langchain)
+
+### Removed
+
+**Templates**
+- Removed 7 templates from creator "ludwig" at author's request
+  - Template IDs: 2795, 2816, 2825, 2850, 2869, 2939, 3847
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.28.2] - 2025-12-01
+
+### Bug Fixes
+
+**n8n_test_workflow: webhookId Resolution**
+
+Fixed critical bug where trigger handlers used `node.id` instead of `node.webhookId` for building webhook URLs. This caused chat/form/webhook triggers to fail with 404 errors when nodes had custom IDs.
+
+- **Root Cause**: `extractWebhookPath()` in `trigger-detector.ts` fell back to `node.id` instead of checking `node.webhookId` first
+- **Fix**: Added `webhookId` to `WorkflowNode` type and updated priority: `params.path` > `webhookId` > `node.id`
+- **Files**: `src/triggers/trigger-detector.ts`, `src/types/n8n-api.ts`
+
+**n8n_test_workflow: Chat Trigger URL Pattern**
+
+Fixed chat triggers using wrong URL pattern. n8n chat triggers require `/webhook/<id>/chat` suffix.
+
+- **Root Cause**: `buildTriggerUrl()` used same pattern for webhooks and chat triggers
+- **Fix**: Chat triggers now correctly use `/webhook/<webhookId>/chat` endpoint
+- **Files**: `src/triggers/trigger-detector.ts:284-289`
+
+**n8n_test_workflow: Form Trigger Content-Type**
+
+Fixed form triggers failing with "Expected multipart/form-data" error.
+
+- **Root Cause**: Form handler sent `application/json` but n8n requires `multipart/form-data`
+- **Fix**: Switched to `form-data` library for proper multipart encoding
+- **Files**: `src/triggers/handlers/form-handler.ts`
+
+### Enhancements
+
+**Form Handler: Complete Field Type Support**
+
+Enhanced form handler to support all n8n form field types with intelligent handling:
+
+- **Supported Types**: text, textarea, email, number, password, date, dropdown, checkbox, file, hidden, html
+- **Checkbox Arrays**: Automatically converts arrays to `field[]` format required by n8n
+- **File Uploads**: Supports base64 content or sends empty placeholder for required files
+- **Helpful Warnings**: Reports missing required fields with field names and labels
+- **Error Hints**: On failure, provides complete field structure with usage examples
+
+```javascript
+// Example with all field types
+n8n_test_workflow({
+  workflowId: "abc123",
+  data: {
+    "field-0": "text value",
+    "field-1": ["checkbox1", "checkbox2"],  // Array for checkboxes
+    "field-2": "dropdown_option",
+    "field-3": "2025-01-15",                // Date format
+    "field-4": "user@example.com",
+    "field-5": 42,                          // Number
+    "field-6": "password123"
+  }
+})
+```
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.28.1] - 2025-12-01
+
+### 🐛 Bug Fixes
+
+**Issue #458: AI Connection Type Propagation**
+
+Fixed `addConnection` operation in workflow diff engine defaulting `targetInput` to "main" instead of preserving the source output type. This caused AI tool connections to be created with incorrect type.
+
+- **Root Cause**: `targetInput` defaulted to `'main'` regardless of `sourceOutput` type
+- **Fix**: Changed default to `sourceOutput` to preserve connection type (ai_tool, ai_memory, ai_languageModel)
+- **Files**: `src/services/workflow-diff-engine.ts:760`
+
+**AI Agent Validation False Positive**
+
+Fixed false positive "AI Agent has no tools connected" warning when tools were properly connected.
+
+- **Root Cause**: Validation checked connections FROM agent instead of TO agent
+- **Fix**: Search all connections where target node is the agent
+- **Files**: `src/services/workflow-validator.ts:1148-1163`
+
+### ✨ Enhancements
+
+**get_node: expectedFormat for resourceLocator Properties**
+
+Added `expectedFormat` field to resourceLocator properties in `get_node` output. This helps AI models understand the correct format for these complex property types.
+
+```json
+{
+  "name": "model",
+  "type": "resourceLocator",
+  "expectedFormat": {
+    "structure": { "mode": "string", "value": "string" },
+    "modes": ["list", "id"],
+    "example": { "mode": "id", "value": "gpt-4o-mini" }
+  }
+}
+```
+
+**get_node: versionNotice Field**
+
+Added `versionNotice` field to make typeVersion more prominent in get_node output, reducing the chance of AI models using outdated versions.
+
+```json
+{
+  "version": "1.3",
+  "versionNotice": "⚠️ Use typeVersion: 1.3 when creating this node"
+}
+```
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.28.0] - 2025-12-01
+
+### ✨ Features
+
+**n8n_test_workflow: Unified Workflow Trigger Tool**
+
+Replaced `n8n_trigger_webhook_workflow` with a new unified `n8n_test_workflow` tool that supports multiple trigger types with auto-detection.
+
+#### Key Features
+
+1. **Auto-Detection of Trigger Type**
+   - Automatically analyzes workflow to detect trigger type (webhook, form, or chat)
+   - No need to specify triggerType unless you want to override detection
+
+2. **Multi-Trigger Support**
+   - **Webhook**: HTTP-based triggers (GET/POST/PUT/DELETE) with custom headers and data
+   - **Form**: Form submission triggers with form field data
+   - **Chat**: AI chat triggers with message and session continuity
+
+3. **SSRF Protection**
+   - All trigger handlers include SSRF URL validation
+   - Blocks requests to private networks, cloud metadata endpoints
+   - Configurable security modes (strict/moderate/permissive)
+
+4. **Extensible Handler Architecture**
+   - Plugin-based trigger handler system
+   - Registry pattern for easy extension
+   - Clean separation of concerns
+
+#### Usage
+
+```javascript
+// Auto-detect trigger type (recommended)
+n8n_test_workflow({workflowId: "123"})
+
+// Webhook with data
+n8n_test_workflow({
+  workflowId: "123",
+  triggerType: "webhook",
+  httpMethod: "POST",
+  data: {name: "John", email: "john@example.com"}
+})
+
+// Chat trigger
+n8n_test_workflow({
+  workflowId: "123",
+  triggerType: "chat",
+  message: "Hello AI assistant",
+  sessionId: "conversation-123"
+})
+
+// Form submission
+n8n_test_workflow({
+  workflowId: "123",
+  triggerType: "form",
+  data: {email: "test@example.com", name: "Test User"}
+})
+```
+
+#### Breaking Changes
+
+- **Removed**: `n8n_trigger_webhook_workflow` tool
+- **Replaced by**: `n8n_test_workflow` with enhanced capabilities
+- **Migration**: Change tool name and add `workflowId` parameter (previously `webhookUrl`)
+
+#### Technical Details
+
+**New Files:**
+- `src/triggers/` - Complete trigger system module
+  - `types.ts` - Type definitions for all trigger types
+  - `trigger-detector.ts` - Auto-detection logic
+  - `trigger-registry.ts` - Handler registration
+  - `handlers/` - Individual handler implementations
+
+**Modified Files:**
+- `src/mcp/handlers-n8n-manager.ts` - New `handleTestWorkflow` function
+- `src/mcp/tools-n8n-manager.ts` - Updated tool definition
+- `src/mcp/tool-docs/workflow_management/` - New documentation
+
+**Test Coverage:**
+- 32 unit tests for trigger detection and registry
+- 30 unit tests for SSRF protection
+- All parameter validation tests updated
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.27.2] - 2025-11-29
+
+### ✨ Enhanced Features
+
+**n8n_deploy_template: Deploy-First with Auto-Fix**
+
+Improved the template deployment tool to deploy first, then automatically fix common issues. This change dramatically improves deployment success rates for templates with expression format issues.
+
+#### Key Changes
+
+1. **Deploy-First Behavior**
+   - Templates are now deployed first without pre-validation
+   - Auto-fix runs automatically after deployment (configurable via `autoFix` parameter)
+   - Returns `fixesApplied` array showing all corrections made
+
+2. **Fixed Expression Validator False Positive**
+   - Fixed "nested expressions" detection that incorrectly flagged valid patterns
+   - Multiple expressions in one string like `={{ $a }} text {{ $b }}` now correctly pass validation
+   - Only truly nested patterns like `{{ {{ $json }} }}` are flagged as errors
+
+3. **Fixed Zod Schema Validation**
+   - Added missing `typeversion-upgrade` and `version-migration` fix types to autofix schema
+   - Prevents silent validation failures when autofix runs
+
+#### Usage
+
+```javascript
+// Deploy with auto-fix (default behavior)
+n8n_deploy_template({
+  templateId: 2776,
+  name: "My Workflow"
+})
+
+// Deploy without auto-fix (not recommended)
+n8n_deploy_template({
+  templateId: 2776,
+  autoFix: false
+})
+```
+
+#### Response
+
+```json
+{
+  "workflowId": "abc123",
+  "name": "My Workflow",
+  "fixesApplied": [
+    {
+      "node": "HTTP Request",
+      "field": "url",
+      "type": "expression-format",
+      "before": "https://api.com/{{ $json.id }}",
+      "after": "=https://api.com/{{ $json.id }}",
+      "confidence": "high"
+    }
+  ]
+}
+```
+
+#### Testing Results
+
+- 87% deployment success rate across 15 diverse templates
+- Auto-fix correctly adds `=` prefix to expressions missing it
+- Auto-fix correctly upgrades outdated typeVersions
+- Failed deployments are legitimate issues (missing community nodes, incomplete templates)
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.27.1] - 2025-11-29
+
+### 🐛 Bug Fixes
+
+**Issue #454: Docker Image Missing Zod Fix from #450**
+
+Fixed Docker image build that was missing the pinned MCP SDK version, causing `n8n_create_workflow` Zod validation errors to persist in the 2.27.0 Docker image.
+
+#### Root Cause
+
+Two files were not updated when #450 pinned the SDK version in `package.json`:
+- `package.runtime.json` had `"@modelcontextprotocol/sdk": "^1.13.2"` instead of `"1.20.1"`
+- `Dockerfile` builder stage had `@modelcontextprotocol/sdk@^1.12.1` hardcoded
+
+The Docker runtime stage uses `package.runtime.json` (not `package.json`), and the builder stage has hardcoded dependency versions.
+
+#### Changes
+
+- **package.runtime.json**: Updated SDK to pinned version `"1.20.1"` (no caret)
+- **Dockerfile**: Updated builder stage SDK to `@1.20.1` and pinned `zod@3.24.1`
+
+#### Impact
+
+- Docker images now include the correct MCP SDK version with Zod fix
+- `n8n_create_workflow` and other workflow tools work correctly in Docker deployments
+- No changes to functionality - this is a build configuration fix
+
+Fixes #454
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.27.0] - 2025-11-28
+
+### ✨ Features
+
+**n8n_deploy_template Tool**
+
+Added new tool for one-click deployment of n8n.io workflow templates directly to your n8n instance.
+
+#### Key Features
+
+- Fetches templates from n8n.io by ID
+- Automatically upgrades node typeVersions to latest supported
+- Validates workflow before deployment
+- Lists required credentials for configuration
+- Strips credential references (user configures in n8n UI)
+
+#### Usage
+
+```javascript
+n8n_deploy_template({
+  templateId: 2639,           // Required: template ID from n8n.io
+  name: "My Custom Name",     // Optional: custom workflow name
+  autoUpgradeVersions: true,  // Default: upgrade node versions
+  validate: true,             // Default: validate before deploy
+  stripCredentials: true      // Default: remove credential refs
+})
+```
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.26.5] - 2025-11-27
+
+### 🔧 Fixed
+
+- **Tools Documentation: Runtime Token Optimization**
+  - Removed historical migration information from tool descriptions (e.g., "Replaces X, Y, Z...")
+  - Removed version-specific references (v2.21.1, issue #357) that are not needed at runtime
+  - Cleaned up consolidation comments in index.ts
+  - Documentation now starts directly with functional content for better AI agent efficiency
+  - Estimated savings: ~128 tokens per full documentation request
+  - Affected tools: `get_node`, `validate_node`, `search_templates`, `n8n_executions`, `n8n_get_workflow`, `n8n_update_partial_workflow`
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.26.4] - 2025-11-26
+
+### 🔧 Fixed
+
+- **n8n 1.121 Compatibility**: Added support for new workflow settings introduced in n8n 1.121
+  - Added `availableInMCP` (boolean) to settings whitelist - controls "Available in MCP" toggle
+  - Added `callerPolicy` to settings whitelist - was already in schema but missing from sanitization
+  - Both settings are now preserved during workflow updates instead of being silently stripped
+  - Settings can be toggled via `updateSettings` operation: `{type: "updateSettings", settings: {availableInMCP: true}}`
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.26.3] - 2025-11-26
+
+### 🔧 Fixed
+
+- **Tools Documentation Gaps**: Addressed remaining documentation issues after v2.26.2 tool consolidation
+  - Added missing `n8n_workflow_versions` documentation with all 6 modes (list, get, rollback, delete, prune, truncate)
+  - Removed non-existent tools (`n8n_diagnostic`, `n8n_list_available_tools`) from documentation exports
+  - Fixed 10+ outdated tool name references:
+    - `get_node_essentials` → `get_node({detail: "standard"})`
+    - `validate_node_operation` → `validate_node()`
+    - `get_minimal` → `n8n_get_workflow({mode: "minimal"})`
+  - Added missing `mode` and `verbose` parameters to `n8n_health_check` documentation
+  - Added missing `mode` parameter to `get_template` documentation (nodes_only, structure, full)
+  - Updated template count from "399+" to "2,700+" in `get_template`
+  - Updated node count from "525" to "500+" in `search_nodes`
+  - Fixed `relatedTools` arrays to remove references to non-existent tools
+
+**Conceived by Romuald Członkowski - [AiAdvisors](https://www.aiadvisors.pl/en)**
+
+## [2.26.2] - 2025-11-25
+
+### 🔧 Fixed
+
+- **Tool Documentation Cleanup**: Synchronized `tool-docs/` with v2.26.0 tool consolidation
+  - Deleted 23 obsolete documentation files for removed tools (get_node_info, get_node_essentials, validate_node_operation, etc.)
+  - Created consolidated documentation for `get_node` (covers all modes: info, docs, search_properties, versions, compare, breaking, migrations)
+  - Created consolidated documentation for `validate_node` (covers modes: full, minimal; profiles: minimal, runtime, ai-friendly, strict)
+  - Created consolidated documentation for `n8n_executions` (covers actions: get, list, delete)
+  - Updated `search_templates` documentation with all searchModes (keyword, by_nodes, by_task, by_metadata)
+  - Updated `n8n_get_workflow` documentation with all modes (full, details, structure, minimal)
+  - Fixed stale `relatedTools` references pointing to removed tools
+  - Updated `tools-documentation.ts` overview to accurately reflect 19 consolidated tools
+
 ## [2.26.1] - 2025-11-25
 
 ### 🔄 Updated
@@ -194,7 +995,7 @@ Added export/restore functionality for MCP sessions to enable zero-downtime depl
 - `restoreSessionState(sessions)` method for session recovery
 - Validates session structure using existing `validateInstanceContext()`
 - Handles null/invalid sessions gracefully with warnings
-- Enforces MAX_SESSIONS limit (100 concurrent sessions)
+- Enforces MAX_SESSIONS limit (default 100, configurable via N8N_MCP_MAX_SESSIONS env var)
 - Skips expired sessions during restore
 
 **3. SessionState Type**

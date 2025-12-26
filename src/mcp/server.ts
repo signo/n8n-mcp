@@ -52,6 +52,9 @@ interface NodeRow {
   is_trigger: number;
   is_webhook: number;
   is_versioned: number;
+  is_tool_variant: number;
+  tool_variant_of?: string;
+  has_tool_variant: number;
   version?: string;
   documentation?: string;
   properties_schema?: string;
@@ -65,6 +68,14 @@ interface VersionSummary {
   hasVersionHistory: boolean;
 }
 
+interface ToolVariantGuidance {
+  isToolVariant: boolean;
+  toolVariantOf?: string;
+  hasToolVariant: boolean;
+  toolVariantNodeType?: string;
+  guidance?: string;
+}
+
 interface NodeMinimalInfo {
   nodeType: string;
   workflowNodeType: string;
@@ -75,6 +86,7 @@ interface NodeMinimalInfo {
   isAITool: boolean;
   isTrigger: boolean;
   isWebhook: boolean;
+  toolVariantInfo?: ToolVariantGuidance;
 }
 
 interface NodeStandardInfo {
@@ -88,6 +100,7 @@ interface NodeStandardInfo {
   credentials?: any;
   examples?: any[];
   versionInfo: VersionSummary;
+  toolVariantInfo?: ToolVariantGuidance;
 }
 
 interface NodeFullInfo {
@@ -100,6 +113,7 @@ interface NodeFullInfo {
   credentials?: any;
   documentation?: string;
   versionInfo: VersionSummary;
+  toolVariantInfo?: ToolVariantGuidance;
 }
 
 interface VersionHistoryInfo {
@@ -220,7 +234,46 @@ export class N8NDocumentationMCPServer {
 
     this.setupHandlers();
   }
-  
+
+  /**
+   * Close the server and release resources.
+   * Should be called when the session is being removed.
+   *
+   * Order of cleanup:
+   * 1. Close MCP server connection
+   * 2. Destroy cache (clears entries AND stops cleanup timer)
+   * 3. Close database connection
+   * 4. Null out references to help GC
+   */
+  async close(): Promise<void> {
+    try {
+      await this.server.close();
+
+      // Use destroy() not clear() - also stops the cleanup timer
+      this.cache.destroy();
+
+      // Close database connection before nullifying reference
+      if (this.db) {
+        try {
+          this.db.close();
+        } catch (dbError) {
+          logger.warn('Error closing database', {
+            error: dbError instanceof Error ? dbError.message : String(dbError)
+          });
+        }
+      }
+
+      // Null out references to help garbage collection
+      this.db = null;
+      this.repository = null;
+      this.templateService = null;
+      this.earlyLogger = null;
+    } catch (error) {
+      // Log but don't throw - cleanup should be best-effort
+      logger.warn('Error closing MCP server', { error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   private async initializeDatabase(dbPath: string): Promise<void> {
     try {
       // Checkpoint: Database connecting (v2.18.3)
@@ -856,6 +909,12 @@ export class N8NDocumentationMCPServer {
           ? { valid: true, errors: [] }
           : { valid: false, errors: [{ field: 'action', message: 'action is required' }] };
         break;
+      case 'n8n_deploy_template':
+        // Requires templateId parameter
+        validationResult = args.templateId !== undefined
+          ? { valid: true, errors: [] }
+          : { valid: false, errors: [{ field: 'templateId', message: 'templateId is required' }] };
+        break;
       default:
         // For tools not yet migrated to schema validation, use basic validation
         return this.validateToolParamsBasic(toolName, args, legacyRequiredParams || []);
@@ -1170,9 +1229,9 @@ export class N8NDocumentationMCPServer {
         await this.ensureInitialized();
         if (!this.repository) throw new Error('Repository not initialized');
         return n8nHandlers.handleAutofixWorkflow(args, this.repository, this.instanceContext);
-      case 'n8n_trigger_webhook_workflow':
-        this.validateToolParams(name, args, ['webhookUrl']);
-        return n8nHandlers.handleTriggerWebhookWorkflow(args, this.instanceContext);
+      case 'n8n_test_workflow':
+        this.validateToolParams(name, args, ['workflowId']);
+        return n8nHandlers.handleTestWorkflow(args, this.instanceContext);
       case 'n8n_executions': {
         this.validateToolParams(name, args, ['action']);
         const execAction = args.action;
@@ -1202,6 +1261,13 @@ export class N8NDocumentationMCPServer {
       case 'n8n_workflow_versions':
         this.validateToolParams(name, args, ['mode']);
         return n8nHandlers.handleWorkflowVersions(args, this.repository!, this.instanceContext);
+
+      case 'n8n_deploy_template':
+        this.validateToolParams(name, args, ['templateId']);
+        await this.ensureInitialized();
+        if (!this.templateService) throw new Error('Template service not initialized');
+        if (!this.repository) throw new Error('Repository not initialized');
+        return n8nHandlers.handleDeployTemplate(args, this.templateService, this.repository, this.instanceContext);
 
       default:
         throw new Error(`Unknown tool: ${name}`);
@@ -1324,12 +1390,20 @@ export class N8NDocumentationMCPServer {
       });
     }
 
-    return {
+    const result: any = {
       ...node,
       workflowNodeType: getWorkflowNodeType(node.package ?? 'n8n-nodes-base', node.nodeType),
       aiToolCapabilities,
       outputs
     };
+
+    // Add tool variant guidance if applicable
+    const toolVariantInfo = this.buildToolVariantGuidance(node);
+    if (toolVariantInfo) {
+      result.toolVariantInfo = toolVariantInfo;
+    }
+
+    return result;
   }
 
   /**
@@ -2190,14 +2264,19 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
     // Get operations (already parsed by repository)
     const operations = node.operations || [];
     
-    const result = {
+    // Get the latest version - this is important for AI to use correct typeVersion
+    const latestVersion = node.version ?? '1';
+
+    const result: any = {
       nodeType: node.nodeType,
       workflowNodeType: getWorkflowNodeType(node.package ?? 'n8n-nodes-base', node.nodeType),
       displayName: node.displayName,
       description: node.description,
       category: node.category,
-      version: node.version ?? '1',
+      version: latestVersion,
       isVersioned: node.isVersioned ?? false,
+      // Prominent warning to use the correct typeVersion
+      versionNotice: `⚠️ Use typeVersion: ${latestVersion} when creating this node`,
       requiredProperties: essentials.required,
       commonProperties: essentials.common,
       operations: operations.map((op: any) => ({
@@ -2217,6 +2296,12 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
         developmentStyle: node.developmentStyle ?? 'programmatic'
       }
     };
+
+    // Add tool variant guidance if applicable
+    const toolVariantInfo = this.buildToolVariantGuidance(node);
+    if (toolVariantInfo) {
+      result.toolVariantInfo = toolVariantInfo;
+    }
 
     // Add examples from templates if requested
     if (includeExamples) {
@@ -2369,7 +2454,7 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
           throw new Error(`Node ${nodeType} not found`);
         }
 
-        return {
+        const result: NodeMinimalInfo = {
           nodeType: node.nodeType,
           workflowNodeType: getWorkflowNodeType(node.package ?? 'n8n-nodes-base', node.nodeType),
           displayName: node.displayName,
@@ -2380,6 +2465,14 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
           isTrigger: node.isTrigger,
           isWebhook: node.isWebhook
         };
+
+        // Add tool variant guidance if applicable
+        const toolVariantInfo = this.buildToolVariantGuidance(node);
+        if (toolVariantInfo) {
+          result.toolVariantInfo = toolVariantInfo;
+        }
+
+        return result;
       }
 
       case 'standard': {
@@ -2812,12 +2905,18 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
     
     // Get properties
     const properties = node.properties || [];
-    
+
+    // Add @version to config for displayOptions evaluation (supports _cnd operators)
+    const configWithVersion = {
+      '@version': node.version || 1,
+      ...config
+    };
+
     // Use enhanced validator with operation mode by default
     const validationResult = EnhancedConfigValidator.validateWithMode(
-      node.nodeType, 
-      config, 
-      properties, 
+      node.nodeType,
+      configWithVersion,
+      properties,
       mode,
       profile
     );
@@ -3061,7 +3160,45 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
       'Extend AI agent capabilities'
     ];
   }
-  
+
+  /**
+   * Build tool variant guidance for node responses.
+   * Provides cross-reference information between base nodes and their Tool variants.
+   */
+  private buildToolVariantGuidance(node: any): ToolVariantGuidance | undefined {
+    const isToolVariant = !!node.isToolVariant;
+    const hasToolVariant = !!node.hasToolVariant;
+    const toolVariantOf = node.toolVariantOf;
+
+    // If this is neither a Tool variant nor has one, no guidance needed
+    if (!isToolVariant && !hasToolVariant) {
+      return undefined;
+    }
+
+    if (isToolVariant) {
+      // This IS a Tool variant (e.g., nodes-base.supabaseTool)
+      return {
+        isToolVariant: true,
+        toolVariantOf,
+        hasToolVariant: false,
+        guidance: `This is the Tool variant for AI Agent integration. Use this node type when connecting to AI Agents. The base node is: ${toolVariantOf}`
+      };
+    }
+
+    if (hasToolVariant && node.nodeType) {
+      // This base node HAS a Tool variant (e.g., nodes-base.supabase)
+      const toolVariantNodeType = `${node.nodeType}Tool`;
+      return {
+        isToolVariant: false,
+        hasToolVariant: true,
+        toolVariantNodeType,
+        guidance: `To use this node with AI Agents, use the Tool variant: ${toolVariantNodeType}. The Tool variant has an additional 'toolDescription' property and outputs 'ai_tool' instead of 'main'.`
+      };
+    }
+
+    return undefined;
+  }
+
   private getAIToolExamples(nodeType: string): any {
     const exampleMap: Record<string, any> = {
       'nodes-base.slack': {
@@ -3145,57 +3282,27 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
       throw new Error(`Node ${nodeType} not found`);
     }
     
-    // Get properties  
+    // Get properties
     const properties = node.properties || [];
-    
-    // Extract operation context (safely handle undefined config properties)
-    const operationContext = {
-      resource: config?.resource,
-      operation: config?.operation,
-      action: config?.action,
-      mode: config?.mode
+
+    // Add @version to config for displayOptions evaluation (supports _cnd operators)
+    const configWithVersion = {
+      '@version': node.version || 1,
+      ...(config || {})
     };
-    
+
     // Find missing required fields
     const missingFields: string[] = [];
-    
+
     for (const prop of properties) {
       // Skip if not required
       if (!prop.required) continue;
-      
-      // Skip if not visible based on current config
-      if (prop.displayOptions) {
-        let isVisible = true;
-        
-        // Check show conditions
-        if (prop.displayOptions.show) {
-          for (const [key, values] of Object.entries(prop.displayOptions.show)) {
-            const configValue = config?.[key];
-            const expectedValues = Array.isArray(values) ? values : [values];
-            
-            if (!expectedValues.includes(configValue)) {
-              isVisible = false;
-              break;
-            }
-          }
-        }
-        
-        // Check hide conditions
-        if (isVisible && prop.displayOptions.hide) {
-          for (const [key, values] of Object.entries(prop.displayOptions.hide)) {
-            const configValue = config?.[key];
-            const expectedValues = Array.isArray(values) ? values : [values];
-            
-            if (expectedValues.includes(configValue)) {
-              isVisible = false;
-              break;
-            }
-          }
-        }
-        
-        if (!isVisible) continue;
+
+      // Skip if not visible based on current config (uses ConfigValidator for _cnd support)
+      if (prop.displayOptions && !ConfigValidator.isPropertyVisible(prop, configWithVersion)) {
+        continue;
       }
-      
+
       // Check if field is missing (safely handle null/undefined config)
       if (!config || !(prop.name in config)) {
         missingFields.push(prop.displayName || prop.name);

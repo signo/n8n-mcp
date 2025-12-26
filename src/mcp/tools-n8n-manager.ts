@@ -276,34 +276,58 @@ export const n8nManagementTools: ToolDefinition[] = [
 
   // Execution Management Tools
   {
-    name: 'n8n_trigger_webhook_workflow',
-    description: `Trigger workflow via webhook. Must be ACTIVE with Webhook node. Method must match config.`,
+    name: 'n8n_test_workflow',
+    description: `Test/trigger workflow execution. Auto-detects trigger type (webhook/form/chat). Supports: webhook (HTTP), form (fields), chat (message). Note: Only workflows with these trigger types can be executed externally.`,
     inputSchema: {
       type: 'object',
       properties: {
-        webhookUrl: { 
-          type: 'string', 
-          description: 'Full webhook URL from n8n workflow (e.g., https://n8n.example.com/webhook/abc-def-ghi)' 
+        workflowId: {
+          type: 'string',
+          description: 'Workflow ID to execute (required)'
         },
-        httpMethod: { 
-          type: 'string', 
+        triggerType: {
+          type: 'string',
+          enum: ['webhook', 'form', 'chat'],
+          description: 'Trigger type. Auto-detected if not specified. Workflow must have a matching trigger node.'
+        },
+        // Webhook options
+        httpMethod: {
+          type: 'string',
           enum: ['GET', 'POST', 'PUT', 'DELETE'],
-          description: 'HTTP method (must match webhook configuration, often GET)' 
+          description: 'For webhook: HTTP method (default: from workflow config or POST)'
         },
-        data: { 
-          type: 'object', 
-          description: 'Data to send with the webhook request' 
+        webhookPath: {
+          type: 'string',
+          description: 'For webhook: override the webhook path'
         },
-        headers: { 
-          type: 'object', 
-          description: 'Additional HTTP headers' 
+        // Chat options
+        message: {
+          type: 'string',
+          description: 'For chat: message to send (required for chat triggers)'
         },
-        waitForResponse: { 
-          type: 'boolean', 
-          description: 'Wait for workflow completion (default: true)' 
+        sessionId: {
+          type: 'string',
+          description: 'For chat: session ID for conversation continuity'
+        },
+        // Common options
+        data: {
+          type: 'object',
+          description: 'Input data/payload for webhook, form fields, or execution data'
+        },
+        headers: {
+          type: 'object',
+          description: 'Custom HTTP headers'
+        },
+        timeout: {
+          type: 'number',
+          description: 'Timeout in ms (default: 120000)'
+        },
+        waitForResponse: {
+          type: 'boolean',
+          description: 'Wait for workflow completion (default: true)'
         }
       },
-      required: ['webhookUrl']
+      required: ['workflowId']
     }
   },
   {
@@ -325,8 +349,8 @@ export const n8nManagementTools: ToolDefinition[] = [
         // For action='get' - detail level
         mode: {
           type: 'string',
-          enum: ['preview', 'summary', 'filtered', 'full'],
-          description: 'For action=get: preview=structure only, summary=2 items (default), filtered=custom, full=all data'
+          enum: ['preview', 'summary', 'filtered', 'full', 'error'],
+          description: 'For action=get: preview=structure only, summary=2 items (default), filtered=custom, full=all data, error=optimized error debugging'
         },
         nodeNames: {
           type: 'array',
@@ -340,6 +364,23 @@ export const n8nManagementTools: ToolDefinition[] = [
         includeInputData: {
           type: 'boolean',
           description: 'For action=get: include input data in addition to output (default: false)'
+        },
+        // Error mode specific parameters
+        errorItemsLimit: {
+          type: 'number',
+          description: 'For action=get with mode=error: sample items from upstream node (default: 2, max: 100)'
+        },
+        includeStackTrace: {
+          type: 'boolean',
+          description: 'For action=get with mode=error: include full stack trace (default: false, shows truncated)'
+        },
+        includeExecutionPath: {
+          type: 'boolean',
+          description: 'For action=get with mode=error: include execution path leading to error (default: true)'
+        },
+        fetchWorkflow: {
+          type: 'boolean',
+          description: 'For action=get with mode=error: fetch workflow for accurate upstream detection (default: true)'
         },
         // For action='list'
         limit: {
@@ -444,6 +485,41 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['mode']
+    }
+  },
+
+  // Template Deployment Tool
+  {
+    name: 'n8n_deploy_template',
+    description: `Deploy a workflow template from n8n.io directly to your n8n instance. Deploys first, then auto-fixes common issues (expression format, typeVersions). Returns workflow ID, required credentials, and fixes applied.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        templateId: {
+          type: 'number',
+          description: 'Template ID from n8n.io (required)'
+        },
+        name: {
+          type: 'string',
+          description: 'Custom workflow name (default: template name)'
+        },
+        autoUpgradeVersions: {
+          type: 'boolean',
+          default: true,
+          description: 'Automatically upgrade node typeVersions to latest supported (default: true)'
+        },
+        autoFix: {
+          type: 'boolean',
+          default: true,
+          description: 'Auto-apply fixes after deployment for expression format issues, missing = prefix, etc. (default: true)'
+        },
+        stripCredentials: {
+          type: 'boolean',
+          default: true,
+          description: 'Remove credential references from nodes - user configures in n8n UI (default: true)'
+        }
+      },
+      required: ['templateId']
     }
   }
 ];

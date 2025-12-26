@@ -383,7 +383,7 @@ describe('n8n-validation', () => {
         expect(cleaned.name).toBe('Test Workflow');
       });
 
-      it('should provide minimal default settings when no settings provided (Issue #431)', () => {
+      it('should provide empty settings when no settings provided (Issue #431)', () => {
         const workflow = {
           name: 'Test Workflow',
           nodes: [],
@@ -391,7 +391,7 @@ describe('n8n-validation', () => {
         } as any;
 
         const cleaned = cleanWorkflowForUpdate(workflow);
-        // n8n API requires settings to be present, so we provide minimal defaults (v1 is modern default)
+        // Empty settings get minimal defaults to avoid API rejection (Issue #431)
         expect(cleaned.settings).toEqual({ executionOrder: 'v1' });
       });
 
@@ -403,45 +403,49 @@ describe('n8n-validation', () => {
           settings: {
             executionOrder: 'v1' as const,
             saveDataSuccessExecution: 'none' as const,
-            callerPolicy: 'workflowsFromSameOwner' as const, // Filtered out (not in OpenAPI spec)
-            timeSavedPerExecution: 5, // Filtered out (UI-only property)
+            callerPolicy: 'workflowsFromSameOwner' as const, // Whitelisted (n8n 1.119+)
+            timeSavedPerExecution: 5, // Whitelisted (n8n 1.119+, PR #21297)
+            unknownProperty: 'should be filtered', // Unknown properties ARE filtered
           },
         } as any;
 
         const cleaned = cleanWorkflowForUpdate(workflow);
 
-        // Unsafe properties filtered out, safe properties kept
+        // All 4 properties from n8n 1.119+ are whitelisted, unknown properties filtered
         expect(cleaned.settings).toEqual({
           executionOrder: 'v1',
-          saveDataSuccessExecution: 'none'
+          saveDataSuccessExecution: 'none',
+          callerPolicy: 'workflowsFromSameOwner',
+          timeSavedPerExecution: 5,
         });
-        expect(cleaned.settings).not.toHaveProperty('callerPolicy');
-        expect(cleaned.settings).not.toHaveProperty('timeSavedPerExecution');
+        expect(cleaned.settings).not.toHaveProperty('unknownProperty');
       });
 
-      it('should filter out callerPolicy (Issue #248 - API limitation)', () => {
+      it('should preserve callerPolicy and availableInMCP (n8n 1.121+ settings)', () => {
         const workflow = {
           name: 'Test Workflow',
           nodes: [],
           connections: {},
           settings: {
             executionOrder: 'v1' as const,
-            callerPolicy: 'workflowsFromSameOwner' as const, // Filtered out
+            callerPolicy: 'workflowsFromSameOwner' as const, // Now whitelisted
+            availableInMCP: true, // New in n8n 1.121
             errorWorkflow: 'N2O2nZy3aUiBRGFN',
           },
         } as any;
 
         const cleaned = cleanWorkflowForUpdate(workflow);
 
-        // callerPolicy filtered out (causes API errors), safe properties kept
+        // callerPolicy and availableInMCP now whitelisted (n8n 1.121+)
         expect(cleaned.settings).toEqual({
           executionOrder: 'v1',
+          callerPolicy: 'workflowsFromSameOwner',
+          availableInMCP: true,
           errorWorkflow: 'N2O2nZy3aUiBRGFN'
         });
-        expect(cleaned.settings).not.toHaveProperty('callerPolicy');
       });
 
-      it('should filter all settings properties correctly (Issue #248 - API design)', () => {
+      it('should preserve all whitelisted settings properties including callerPolicy (Issue #248 - updated for n8n 1.121)', () => {
         const workflow = {
           name: 'Test Workflow',
           nodes: [],
@@ -455,14 +459,14 @@ describe('n8n-validation', () => {
             saveExecutionProgress: false,
             executionTimeout: 300,
             errorWorkflow: 'error-workflow-id',
-            callerPolicy: 'workflowsFromAList' as const, // Filtered out (not in OpenAPI spec)
+            callerPolicy: 'workflowsFromAList' as const, // Now whitelisted (n8n 1.121+)
+            availableInMCP: false, // New in n8n 1.121
           },
         } as any;
 
         const cleaned = cleanWorkflowForUpdate(workflow);
 
-        // Safe properties kept, unsafe properties filtered out
-        // See: https://community.n8n.io/t/api-workflow-update-endpoint-doesnt-support-setting-callerpolicy/161916
+        // All whitelisted properties kept including callerPolicy and availableInMCP
         expect(cleaned.settings).toEqual({
           executionOrder: 'v0',
           timezone: 'UTC',
@@ -471,9 +475,10 @@ describe('n8n-validation', () => {
           saveManualExecutions: false,
           saveExecutionProgress: false,
           executionTimeout: 300,
-          errorWorkflow: 'error-workflow-id'
+          errorWorkflow: 'error-workflow-id',
+          callerPolicy: 'workflowsFromAList',
+          availableInMCP: false
         });
-        expect(cleaned.settings).not.toHaveProperty('callerPolicy');
       });
 
       it('should handle workflows without settings gracefully', () => {
@@ -484,27 +489,26 @@ describe('n8n-validation', () => {
         } as any;
 
         const cleaned = cleanWorkflowForUpdate(workflow);
-        // n8n API requires settings, so we provide minimal defaults (v1 is modern default)
+        // Empty settings get minimal defaults to avoid API rejection (Issue #431)
         expect(cleaned.settings).toEqual({ executionOrder: 'v1' });
       });
 
-      it('should provide minimal settings when only non-whitelisted properties exist (Issue #431)', () => {
+      it('should return minimal defaults when only non-whitelisted properties exist (Issue #431)', () => {
         const workflow = {
           name: 'Test Workflow',
           nodes: [],
           connections: {},
           settings: {
-            callerPolicy: 'workflowsFromSameOwner' as const, // Filtered out
-            timeSavedPerExecution: 5, // Filtered out (UI-only)
-            someOtherProperty: 'value', // Filtered out
+            timeSavedPerExecution: 5, // Whitelisted (n8n 1.119+)
+            someOtherProperty: 'value', // Filtered out (unknown)
           },
         } as any;
 
         const cleaned = cleanWorkflowForUpdate(workflow);
-        // All properties were filtered out, but n8n API requires settings
-        // so we provide minimal defaults (v1 is modern default) to avoid both
-        // "additional properties" and "required property" API errors
-        expect(cleaned.settings).toEqual({ executionOrder: 'v1' });
+        // timeSavedPerExecution is now whitelisted, someOtherProperty is filtered out
+        // n8n API now accepts empty or partial settings {} - server preserves existing values
+        expect(cleaned.settings).toEqual({ timeSavedPerExecution: 5 });
+        expect(cleaned.settings).not.toHaveProperty('someOtherProperty');
       });
 
       it('should preserve whitelisted settings when mixed with non-whitelisted (Issue #431)', () => {
@@ -514,19 +518,19 @@ describe('n8n-validation', () => {
           connections: {},
           settings: {
             executionOrder: 'v1' as const, // Whitelisted
-            callerPolicy: 'workflowsFromSameOwner' as const, // Filtered out
+            callerPolicy: 'workflowsFromSameOwner' as const, // Now whitelisted (n8n 1.121+)
             timezone: 'America/New_York', // Whitelisted
             someOtherProperty: 'value', // Filtered out
           },
         } as any;
 
         const cleaned = cleanWorkflowForUpdate(workflow);
-        // Should keep only whitelisted properties
+        // Should keep only whitelisted properties (callerPolicy now whitelisted)
         expect(cleaned.settings).toEqual({
           executionOrder: 'v1',
+          callerPolicy: 'workflowsFromSameOwner',
           timezone: 'America/New_York'
         });
-        expect(cleaned.settings).not.toHaveProperty('callerPolicy');
         expect(cleaned.settings).not.toHaveProperty('someOtherProperty');
       });
     });
@@ -879,6 +883,260 @@ describe('n8n-validation', () => {
 
       const errors = validateWorkflowStructure(workflow);
       expect(errors.some(e => e.includes('Invalid connections'))).toBe(true);
+    });
+
+    // Issue #503: mcpTrigger nodes should not be flagged as disconnected
+    describe('AI connection types (Issue #503)', () => {
+      it('should NOT flag mcpTrigger as disconnected when it has ai_tool inbound connections', () => {
+        const workflow = {
+          name: 'MCP Server Workflow',
+          nodes: [
+            {
+              id: 'mcp-server',
+              name: 'MCP Server',
+              type: '@n8n/n8n-nodes-langchain.mcpTrigger',
+              typeVersion: 1,
+              position: [500, 300] as [number, number],
+              parameters: {},
+            },
+            {
+              id: 'tool-1',
+              name: 'Get Weather Tool',
+              type: '@n8n/n8n-nodes-langchain.toolWorkflow',
+              typeVersion: 1.3,
+              position: [300, 200] as [number, number],
+              parameters: {},
+            },
+            {
+              id: 'tool-2',
+              name: 'Search Tool',
+              type: '@n8n/n8n-nodes-langchain.toolWorkflow',
+              typeVersion: 1.3,
+              position: [300, 400] as [number, number],
+              parameters: {},
+            },
+          ],
+          connections: {
+            'Get Weather Tool': {
+              ai_tool: [[{ node: 'MCP Server', type: 'ai_tool', index: 0 }]],
+            },
+            'Search Tool': {
+              ai_tool: [[{ node: 'MCP Server', type: 'ai_tool', index: 0 }]],
+            },
+          },
+        };
+
+        const errors = validateWorkflowStructure(workflow);
+        const disconnectedErrors = errors.filter(e => e.includes('Disconnected'));
+        expect(disconnectedErrors).toHaveLength(0);
+      });
+
+      it('should NOT flag nodes as disconnected when connected via ai_languageModel', () => {
+        const workflow = {
+          name: 'AI Agent Workflow',
+          nodes: [
+            {
+              id: 'agent-1',
+              name: 'AI Agent',
+              type: '@n8n/n8n-nodes-langchain.agent',
+              typeVersion: 1.6,
+              position: [500, 300] as [number, number],
+              parameters: {},
+            },
+            {
+              id: 'llm-1',
+              name: 'OpenAI Model',
+              type: '@n8n/n8n-nodes-langchain.lmChatOpenAi',
+              typeVersion: 1,
+              position: [300, 300] as [number, number],
+              parameters: {},
+            },
+          ],
+          connections: {
+            'OpenAI Model': {
+              ai_languageModel: [[{ node: 'AI Agent', type: 'ai_languageModel', index: 0 }]],
+            },
+          },
+        };
+
+        const errors = validateWorkflowStructure(workflow);
+        const disconnectedErrors = errors.filter(e => e.includes('Disconnected'));
+        expect(disconnectedErrors).toHaveLength(0);
+      });
+
+      it('should NOT flag nodes as disconnected when connected via ai_memory', () => {
+        const workflow = {
+          name: 'AI Memory Workflow',
+          nodes: [
+            {
+              id: 'agent-1',
+              name: 'AI Agent',
+              type: '@n8n/n8n-nodes-langchain.agent',
+              typeVersion: 1.6,
+              position: [500, 300] as [number, number],
+              parameters: {},
+            },
+            {
+              id: 'memory-1',
+              name: 'Buffer Memory',
+              type: '@n8n/n8n-nodes-langchain.memoryBufferWindow',
+              typeVersion: 1,
+              position: [300, 400] as [number, number],
+              parameters: {},
+            },
+          ],
+          connections: {
+            'Buffer Memory': {
+              ai_memory: [[{ node: 'AI Agent', type: 'ai_memory', index: 0 }]],
+            },
+          },
+        };
+
+        const errors = validateWorkflowStructure(workflow);
+        const disconnectedErrors = errors.filter(e => e.includes('Disconnected'));
+        expect(disconnectedErrors).toHaveLength(0);
+      });
+
+      it('should NOT flag nodes as disconnected when connected via ai_embedding', () => {
+        const workflow = {
+          name: 'Vector Store Workflow',
+          nodes: [
+            {
+              id: 'vs-1',
+              name: 'Vector Store',
+              type: '@n8n/n8n-nodes-langchain.vectorStorePinecone',
+              typeVersion: 1,
+              position: [500, 300] as [number, number],
+              parameters: {},
+            },
+            {
+              id: 'embed-1',
+              name: 'OpenAI Embeddings',
+              type: '@n8n/n8n-nodes-langchain.embeddingsOpenAi',
+              typeVersion: 1,
+              position: [300, 300] as [number, number],
+              parameters: {},
+            },
+          ],
+          connections: {
+            'OpenAI Embeddings': {
+              ai_embedding: [[{ node: 'Vector Store', type: 'ai_embedding', index: 0 }]],
+            },
+          },
+        };
+
+        const errors = validateWorkflowStructure(workflow);
+        const disconnectedErrors = errors.filter(e => e.includes('Disconnected'));
+        expect(disconnectedErrors).toHaveLength(0);
+      });
+
+      it('should NOT flag nodes as disconnected when connected via ai_vectorStore', () => {
+        const workflow = {
+          name: 'Retriever Workflow',
+          nodes: [
+            {
+              id: 'retriever-1',
+              name: 'Vector Store Retriever',
+              type: '@n8n/n8n-nodes-langchain.retrieverVectorStore',
+              typeVersion: 1,
+              position: [500, 300] as [number, number],
+              parameters: {},
+            },
+            {
+              id: 'vs-1',
+              name: 'Pinecone Store',
+              type: '@n8n/n8n-nodes-langchain.vectorStorePinecone',
+              typeVersion: 1,
+              position: [300, 300] as [number, number],
+              parameters: {},
+            },
+          ],
+          connections: {
+            'Pinecone Store': {
+              ai_vectorStore: [[{ node: 'Vector Store Retriever', type: 'ai_vectorStore', index: 0 }]],
+            },
+          },
+        };
+
+        const errors = validateWorkflowStructure(workflow);
+        const disconnectedErrors = errors.filter(e => e.includes('Disconnected'));
+        expect(disconnectedErrors).toHaveLength(0);
+      });
+
+      it('should NOT flag nodes as disconnected when connected via error output', () => {
+        const workflow = {
+          name: 'Error Handling Workflow',
+          nodes: [
+            {
+              id: 'http-1',
+              name: 'HTTP Request',
+              type: 'n8n-nodes-base.httpRequest',
+              typeVersion: 4.2,
+              position: [300, 300] as [number, number],
+              parameters: {},
+            },
+            {
+              id: 'set-1',
+              name: 'Handle Error',
+              type: 'n8n-nodes-base.set',
+              typeVersion: 3.4,
+              position: [500, 400] as [number, number],
+              parameters: {},
+            },
+          ],
+          connections: {
+            'HTTP Request': {
+              error: [[{ node: 'Handle Error', type: 'error', index: 0 }]],
+            },
+          },
+        };
+
+        const errors = validateWorkflowStructure(workflow);
+        const disconnectedErrors = errors.filter(e => e.includes('Disconnected'));
+        expect(disconnectedErrors).toHaveLength(0);
+      });
+
+      it('should still flag truly disconnected nodes in AI workflows', () => {
+        const workflow = {
+          name: 'AI Workflow with Disconnected Node',
+          nodes: [
+            {
+              id: 'agent-1',
+              name: 'AI Agent',
+              type: '@n8n/n8n-nodes-langchain.agent',
+              typeVersion: 1.6,
+              position: [500, 300] as [number, number],
+              parameters: {},
+            },
+            {
+              id: 'llm-1',
+              name: 'OpenAI Model',
+              type: '@n8n/n8n-nodes-langchain.lmChatOpenAi',
+              typeVersion: 1,
+              position: [300, 300] as [number, number],
+              parameters: {},
+            },
+            {
+              id: 'disconnected-1',
+              name: 'Disconnected Set',
+              type: 'n8n-nodes-base.set',
+              typeVersion: 3.4,
+              position: [700, 300] as [number, number],
+              parameters: {},
+            },
+          ],
+          connections: {
+            'OpenAI Model': {
+              ai_languageModel: [[{ node: 'AI Agent', type: 'ai_languageModel', index: 0 }]],
+            },
+          },
+        };
+
+        const errors = validateWorkflowStructure(workflow);
+        const disconnectedErrors = errors.filter(e => e.includes('Disconnected'));
+        expect(disconnectedErrors.length).toBeGreaterThan(0);
+        expect(disconnectedErrors[0]).toContain('Disconnected Set');
+      });
     });
   });
 
@@ -1406,7 +1664,7 @@ describe('n8n-validation', () => {
       expect(forUpdate).not.toHaveProperty('active');
       expect(forUpdate).not.toHaveProperty('tags');
       expect(forUpdate).not.toHaveProperty('meta');
-      // n8n API requires settings in updates, so minimal defaults (v1) are provided (Issue #431)
+      // Empty settings get minimal defaults to avoid API rejection (Issue #431)
       expect(forUpdate.settings).toEqual({ executionOrder: 'v1' });
       expect(validateWorkflowStructure(forUpdate)).toEqual([]);
     });

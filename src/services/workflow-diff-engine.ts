@@ -757,7 +757,8 @@ export class WorkflowDiffEngine {
     const { sourceOutput, sourceIndex } = this.resolveSmartParameters(workflow, operation);
 
     // Use nullish coalescing to properly handle explicit 0 values
-    const targetInput = operation.targetInput ?? 'main';
+    // Default targetInput to sourceOutput to preserve connection type for AI connections (ai_tool, ai_memory, etc.)
+    const targetInput = operation.targetInput ?? sourceOutput;
     const targetIndex = operation.targetIndex ?? 0;
 
     // Initialize source node connections object
@@ -896,13 +897,13 @@ export class WorkflowDiffEngine {
   // Workflow activation operation validators
   private validateActivateWorkflow(workflow: Workflow, operation: ActivateWorkflowOperation): string | null {
     // Check if workflow has at least one activatable trigger
-    // Issue #351: executeWorkflowTrigger cannot activate workflows
+    // NOTE: Since n8n 2.0, executeWorkflowTrigger is activatable and MUST be activated to work
     const activatableTriggers = workflow.nodes.filter(
       node => !node.disabled && isActivatableTrigger(node.type)
     );
 
     if (activatableTriggers.length === 0) {
-      return 'Cannot activate workflow: No activatable trigger nodes found. Workflows must have at least one enabled trigger node (webhook, schedule, email, etc.). Note: executeWorkflowTrigger cannot activate workflows as they can only be invoked by other workflows.';
+      return 'Cannot activate workflow: No activatable trigger nodes found. Workflows must have at least one enabled trigger node (webhook, schedule, executeWorkflowTrigger, etc.).';
     }
 
     return null;
