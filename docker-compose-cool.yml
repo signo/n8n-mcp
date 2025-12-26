@@ -1,7 +1,4 @@
 # docker-compose-cool.yml
-# For optimized builds with BuildKit, use: docker-compose -f docker-compose.buildkit.yml up
-version: '3.8'
-
 services:
   n8n-mcp:
     image: ghcr.io/czlonkowski/n8n-mcp:latest
@@ -37,7 +34,8 @@ services:
     
     # Volumes for persistence
     volumes:
-      - n8n-mcp-data:/app/data
+      # local dir talia server
+      - /home/admin/n8n/data:/app/data
     
     # Port mapping
     ports:
@@ -62,6 +60,6 @@ services:
       - traefik.http.middlewares.k1-traefik-api-key-auth
 
 # Named volume for data persistence
-volumes:
-  n8n-mcp-data:
-    driver: local
+#volumes:
+#  n8n-mcp-data:
+#    driver: local
