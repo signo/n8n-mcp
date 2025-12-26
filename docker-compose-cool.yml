@@ -56,8 +56,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    labels:
-      - traefik.http.middlewares.k1-traefik-api-key-auth
+#    labels:
+#      - traefik.http.middlewares.k1-traefik-api-key-auth
 
 # Named volume for data persistence
 #volumes:
