@@ -9,23 +9,34 @@ import { TelemetryError, TelemetryErrorType, TelemetryCircuitBreaker } from './t
 import { logger } from '../utils/logger';
 
 /**
- * Convert camelCase object keys to snake_case
- * Needed because Supabase PostgREST doesn't auto-convert
+ * Convert camelCase key to snake_case
  */
-function toSnakeCase(obj: any): any {
-  if (obj === null || obj === undefined) return obj;
-  if (Array.isArray(obj)) return obj.map(toSnakeCase);
-  if (typeof obj !== 'object') return obj;
+function keyToSnakeCase(key: string): string {
+  return key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
 
-  const result: any = {};
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      // Convert camelCase to snake_case
-      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-      // Recursively convert nested objects
-      result[snakeKey] = toSnakeCase(obj[key]);
-    }
+/**
+ * Convert WorkflowMutationRecord to Supabase-compatible format.
+ *
+ * IMPORTANT: Only converts top-level field names to snake_case.
+ * Nested workflow data (workflowBefore, workflowAfter, operations, etc.)
+ * is preserved EXACTLY as-is to maintain n8n API compatibility.
+ *
+ * The Supabase workflow_mutations table stores workflow_before and
+ * workflow_after as JSONB columns, which preserve the original structure.
+ * Only the top-level columns (user_id, session_id, etc.) require snake_case.
+ *
+ * Issue #517: Previously this used recursive conversion which mangled:
+ * - Connection keys (node names like "Webhook" → "_webhook")
+ * - Node field names (typeVersion → type_version)
+ */
+function mutationToSupabaseFormat(mutation: WorkflowMutationRecord): Record<string, any> {
+  const result: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(mutation)) {
+    result[keyToSnakeCase(key)] = value;
   }
+
   return result;
 }
 
@@ -47,6 +58,13 @@ export class TelemetryBatchProcessor {
   private flushTimes: number[] = [];
   private deadLetterQueue: (TelemetryEvent | WorkflowTelemetry | WorkflowMutationRecord)[] = [];
   private readonly maxDeadLetterSize = 100;
+  // Track event listeners for proper cleanup to prevent memory leaks
+  private eventListeners: {
+    beforeExit?: () => void;
+    sigint?: () => void;
+    sigterm?: () => void;
+  } = {};
+  private started: boolean = false;
 
   constructor(
     private supabase: SupabaseClient | null,
@@ -61,6 +79,12 @@ export class TelemetryBatchProcessor {
   start(): void {
     if (!this.isEnabled() || !this.supabase) return;
 
+    // Guard against multiple starts (prevents event listener accumulation)
+    if (this.started) {
+      logger.debug('Telemetry batch processor already started, skipping');
+      return;
+    }
+
     // Set up periodic flushing
     this.flushTimer = setInterval(() => {
       this.flush();
@@ -72,17 +96,22 @@ export class TelemetryBatchProcessor {
       this.flushTimer.unref();
     }
 
-    // Set up process exit handlers
-    process.on('beforeExit', () => this.flush());
-    process.on('SIGINT', () => {
+    // Set up process exit handlers with stored references for cleanup
+    this.eventListeners.beforeExit = () => this.flush();
+    this.eventListeners.sigint = () => {
       this.flush();
       process.exit(0);
-    });
-    process.on('SIGTERM', () => {
+    };
+    this.eventListeners.sigterm = () => {
       this.flush();
       process.exit(0);
-    });
+    };
 
+    process.on('beforeExit', this.eventListeners.beforeExit);
+    process.on('SIGINT', this.eventListeners.sigint);
+    process.on('SIGTERM', this.eventListeners.sigterm);
+
+    this.started = true;
     logger.debug('Telemetry batch processor started');
   }
 
@@ -94,6 +123,20 @@ export class TelemetryBatchProcessor {
       clearInterval(this.flushTimer);
       this.flushTimer = undefined;
     }
+
+    // Remove event listeners to prevent memory leaks
+    if (this.eventListeners.beforeExit) {
+      process.removeListener('beforeExit', this.eventListeners.beforeExit);
+    }
+    if (this.eventListeners.sigint) {
+      process.removeListener('SIGINT', this.eventListeners.sigint);
+    }
+    if (this.eventListeners.sigterm) {
+      process.removeListener('SIGTERM', this.eventListeners.sigterm);
+    }
+    this.eventListeners = {};
+    this.started = false;
+
     logger.debug('Telemetry batch processor stopped');
   }
 
@@ -266,7 +309,7 @@ export class TelemetryBatchProcessor {
       for (const batch of batches) {
         const result = await this.executeWithRetry(async () => {
           // Convert camelCase to snake_case for Supabase
-          const snakeCaseBatch = batch.map(mutation => toSnakeCase(mutation));
+          const snakeCaseBatch = batch.map(mutation => mutationToSupabaseFormat(mutation));
 
           const { error } = await this.supabase!
             .from('workflow_mutations')

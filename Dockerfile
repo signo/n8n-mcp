@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.npm \
     echo '{}' > package.json && \
     npm install --no-save typescript@^5.8.3 @types/node@^22.15.30 @types/express@^5.0.3 \
         @modelcontextprotocol/sdk@1.20.1 dotenv@^16.5.0 express@^5.1.0 axios@^1.10.0 \
-        n8n-workflow@^1.96.0 uuid@^11.0.5 @types/uuid@^10.0.0 \
+        n8n-workflow@^2.4.2 uuid@^11.0.5 @types/uuid@^10.0.0 \
         openai@^4.77.0 zod@3.24.1 lru-cache@^11.2.1 @supabase/supabase-js@^2.57.4
 
 # Copy source and build
@@ -48,6 +48,11 @@ COPY --from=builder /app/dist ./dist
 # Copy pre-built database and required files
 # Cache bust: 2025-07-06-trigger-fix-v3 - includes is_trigger=true for webhook,cron,interval,emailReadImap
 COPY data/nodes.db ./data/
+# Pristine seed copy outside /app/data: volume mounts over /app/data mask the
+# bundled database, and the runtime image cannot rebuild it (no n8n packages),
+# so the entrypoint seeds custom/empty DB paths from here.
+COPY data/nodes.db ./.db-seed/nodes.db
+COPY data/skills ./data/skills
 COPY src/database/schema-optimized.sql ./src/database/
 COPY .env.example ./
 

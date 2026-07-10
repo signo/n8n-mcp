@@ -54,6 +54,24 @@ export interface WorkflowSettings {
   errorWorkflow?: string;
 }
 
+/**
+ * n8n's draft/publish model surfaces the currently-published version of a workflow
+ * alongside the working draft. `nodes`/`connections` on the workflow itself are the
+ * draft (latest edits in the editor); `activeVersion.nodes`/`activeVersion.connections`
+ * are the published graph that actually runs.
+ *
+ * Only the fields we read are declared; n8n returns additional keys (versionId,
+ * authors, autosaved, workflowPublishHistory, etc.) — add them here when a consumer
+ * actually needs them.
+ */
+export interface ActiveWorkflowVersion {
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection;
+  name?: string | null;
+  createdAt?: string;
+  [key: string]: unknown;
+}
+
 export interface Workflow {
   id?: string;
   name: string;
@@ -69,6 +87,8 @@ export interface Workflow {
   createdAt?: string;
   versionId?: string;
   versionCounter?: number; // Added: n8n 1.118.1+ returns this in GET responses
+  activeVersionId?: string | null; // n8n draft/publish: pointer to the published version
+  activeVersion?: ActiveWorkflowVersion | null; // n8n draft/publish: published graph (heavy, omitted from GET responses by default)
   meta?: {
     instanceId?: string;
   };
@@ -311,6 +331,7 @@ export interface WebhookRequest {
 // MCP Tool Response Type
 export interface McpToolResponse {
   success: boolean;
+  saved?: boolean;
   data?: unknown;
   error?: string;
   message?: string;
@@ -318,6 +339,7 @@ export interface McpToolResponse {
   details?: Record<string, unknown>;
   executionId?: string;
   workflowId?: string;
+  operationsApplied?: number;
 }
 
 // Execution Filtering Types
@@ -452,4 +474,82 @@ export interface ErrorSuggestion {
   title: string;
   description: string;
   confidence: 'high' | 'medium' | 'low';
+}
+
+// Data Table types
+export interface DataTableColumn {
+  name: string;
+  type?: 'string' | 'number' | 'boolean' | 'date';
+}
+
+export interface DataTableColumnResponse {
+  id: string;
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'date';
+  index: number;
+}
+
+export interface DataTable {
+  id: string;
+  name: string;
+  columns?: DataTableColumnResponse[];
+  projectId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DataTableRow {
+  id?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  [columnName: string]: unknown;
+}
+
+export interface DataTableFilterCondition {
+  columnName: string;
+  condition: 'eq' | 'neq' | 'like' | 'ilike' | 'gt' | 'gte' | 'lt' | 'lte';
+  value?: any;
+}
+
+export interface DataTableFilter {
+  type?: 'and' | 'or';
+  filters: DataTableFilterCondition[];
+}
+
+export interface DataTableListParams {
+  limit?: number;
+  cursor?: string;
+}
+
+export interface DataTableRowListParams {
+  limit?: number;
+  cursor?: string;
+  filter?: string;
+  sortBy?: string;
+  search?: string;
+}
+
+export interface DataTableInsertRowsParams {
+  data: Record<string, unknown>[];
+  returnType?: 'count' | 'id' | 'all';
+}
+
+export interface DataTableUpdateRowsParams {
+  filter: DataTableFilter;
+  data: Record<string, unknown>;
+  returnData?: boolean;
+  dryRun?: boolean;
+}
+
+export interface DataTableUpsertRowParams {
+  filter: DataTableFilter;
+  data: Record<string, unknown>;
+  returnData?: boolean;
+  dryRun?: boolean;
+}
+
+export interface DataTableDeleteRowsParams {
+  filter: string;
+  returnData?: boolean;
+  dryRun?: boolean;
 }

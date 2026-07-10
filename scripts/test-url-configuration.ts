@@ -71,10 +71,12 @@ const testCases: TestCase[] = [
     }
   },
   {
-    name: 'Fixed HTTP implementation',
+    // DEPRECATED: This test case tests the deprecated fixed HTTP implementation
+    // See: https://github.com/czlonkowski/n8n-mcp/issues/524
+    name: 'Fixed HTTP implementation (DEPRECATED)',
     env: {
       MCP_MODE: 'http',
-      USE_FIXED_HTTP: 'true',
+      USE_FIXED_HTTP: 'true',  // DEPRECATED: Will be removed in future version
       AUTH_TOKEN: 'test-token-for-testing-only',
       PORT: '3005',
       BASE_URL: 'https://fixed.example.com'
@@ -128,9 +130,11 @@ async function runTest(testCase: TestCase): Promise<void> {
             const healthResponse = await axios.get(healthUrl);
             console.log(`✅ Health endpoint status: ${healthResponse.data.status}`);
             
-            // Test MCP info endpoint
+            // Test MCP info endpoint (GET /mcp now requires auth per GHSA-75hx-xj24-mqrw)
             const mcpUrl = `http://localhost:${testCase.env.PORT}/mcp`;
-            const mcpResponse = await axios.get(mcpUrl);
+            const mcpResponse = await axios.get(mcpUrl, {
+              headers: { Authorization: `Bearer ${testCase.env.AUTH_TOKEN}` }
+            });
             console.log(`✅ MCP info endpoint: ${mcpResponse.data.description}`);
             
             // Check console output

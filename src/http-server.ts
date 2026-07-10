@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 /**
- * Fixed HTTP server for n8n-MCP that properly handles StreamableHTTPServerTransport initialization
- * This implementation ensures the transport is properly initialized before handling requests
+ * @deprecated This fixed HTTP server is deprecated as of v2.31.8.
+ * Use SingleSessionHTTPServer from http-server-single-session.ts instead.
+ *
+ * This implementation does not support SSE streaming required by clients like OpenAI Codex.
+ * See: https://github.com/czlonkowski/n8n-mcp/issues/524
+ *
+ * Original purpose: Fixed HTTP server for n8n-MCP that properly handles
+ * StreamableHTTPServerTransport initialization by bypassing it entirely.
+ * This implementation ensures the transport is properly initialized before handling requests.
  */
 import express from 'express';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -9,7 +16,7 @@ import { n8nDocumentationToolsFinal } from './mcp/tools';
 import { n8nManagementTools } from './mcp/tools-n8n-manager';
 import { N8NDocumentationMCPServer } from './mcp/server';
 import { logger } from './utils/logger';
-import { AuthManager } from './utils/auth';
+import { AuthManager, buildBearerChallenge } from './utils/auth';
 import { PROJECT_VERSION } from './utils/version';
 import { isN8nApiConfigured } from './config/n8n-api';
 import dotenv from 'dotenv';
@@ -125,7 +132,18 @@ async function shutdown() {
   }
 }
 
+/**
+ * @deprecated Use SingleSessionHTTPServer from http-server-single-session.ts instead.
+ * This function does not support SSE streaming required by clients like OpenAI Codex.
+ */
 export async function startFixedHTTPServer() {
+  // Log deprecation warning
+  logger.warn(
+    'DEPRECATION: startFixedHTTPServer() is deprecated as of v2.31.8. ' +
+    'Use SingleSessionHTTPServer which supports SSE streaming. ' +
+    'See: https://github.com/czlonkowski/n8n-mcp/issues/524'
+  );
+
   validateEnvironment();
   
   const app = express();
@@ -283,12 +301,13 @@ export async function startFixedHTTPServer() {
     
     // Check if Authorization header is missing
     if (!authHeader) {
-      logger.warn('Authentication failed: Missing Authorization header', { 
+      logger.warn('Authentication failed: Missing Authorization header', {
         ip: req.ip,
         userAgent: req.get('user-agent'),
         reason: 'no_auth_header'
       });
-      res.status(401).json({ 
+      res.setHeader('WWW-Authenticate', buildBearerChallenge('no_auth_header'));
+      res.status(401).json({
         jsonrpc: '2.0',
         error: {
           code: -32001,
@@ -298,16 +317,17 @@ export async function startFixedHTTPServer() {
       });
       return;
     }
-    
+
     // Check if Authorization header has Bearer prefix
     if (!authHeader.startsWith('Bearer ')) {
-      logger.warn('Authentication failed: Invalid Authorization header format (expected Bearer token)', { 
+      logger.warn('Authentication failed: Invalid Authorization header format (expected Bearer token)', {
         ip: req.ip,
         userAgent: req.get('user-agent'),
         reason: 'invalid_auth_format',
         headerPrefix: authHeader.substring(0, Math.min(authHeader.length, 10)) + '...'  // Log first 10 chars for debugging
       });
-      res.status(401).json({ 
+      res.setHeader('WWW-Authenticate', buildBearerChallenge('invalid_auth_format'));
+      res.status(401).json({
         jsonrpc: '2.0',
         error: {
           code: -32001,
@@ -332,6 +352,7 @@ export async function startFixedHTTPServer() {
         userAgent: req.get('user-agent'),
         reason: 'invalid_token'
       });
+      res.setHeader('WWW-Authenticate', buildBearerChallenge('invalid_token'));
       res.status(401).json({
         jsonrpc: '2.0',
         error: {
